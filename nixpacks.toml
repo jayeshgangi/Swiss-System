@@ -1,8 +1,0 @@
-[phases.setup]
-nixPkgs = ["python311"]
-
-[phases.build]
-cmd = "pip install -r requirements.txt"
-
-[start]
-cmd = "python app.py"
