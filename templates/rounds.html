@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tournament Rounds</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+/* body {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 20px;
+} */
+body {
+    background: url('{{ url_for('static', filename='chessboard.jpg') }}') no-repeat center center fixed;
+    background-size: cover;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    max-width: 1200px;
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+}
+.round-card {
+    background: #f8f9fa;
+    border-left: 5px solid #667eea;
+    margin-bottom: 20px;
+}
+.round-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    font-weight: bold;
+}
+.match-row:hover {
+    background-color: #e9ecef;
+}
+.bye-alert {
+    background: #fff3cd;
+    border-left: 4px solid #ffc107;
+}
+.btn-generate {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    color: white;
+    padding: 12px 30px;
+    font-weight: bold;
+}
+.btn-generate:hover {
+    opacity: 0.9;
+    color: white;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+    <h1 class="mb-4 text-center" style="color: #667eea;">Tournament Rounds Manager</h1>
+    <!-- ADD THIS DIV FOR STANDINGS DISPLAY -->
+    <div id="tournamentListBox"></div>
+
+    <!-- Alert Messages -->
+    {% if error_message %}
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <strong>Error!</strong> {{ error_message }}
+        <button type="button" class="btn-close" data-dismiss="alert"></button>
+    </div>
+    {% endif %}
+    
+    {% if success_message %}
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <strong>Success!</strong> {{ success_message }}
+        <button type="button" class="btn-close" data-dismiss="alert"></button>
+    </div>
+    {% endif %}
+    
+    <!-- Tournament Selection -->
+    <form method="POST" class="mb-4">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-8">
+                <label class="form-label fw-bold">Select Tournament:</label>
+                <select name="tournament_id" required class="form-select">
+                    <option value="">-- Choose a Tournament --</option>
+                    {% for t in tournaments %}
+                    <option value="{{ t.id }}" {% if selected_tournament and t.id == selected_tournament.id %}selected{% endif %}>
+                        {{ t.name }} ({{ t.rounds }} rounds)
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" name="action" value="load_tournament" class="btn btn-primary w-80">
+                    Load Tournament
+                </button>
+                <a href="{{ url_for('setupdashboard') }}" class="btn btn-info w-80">Back</a>
+                <button type = "button" class="btn btn-success w-80" onclick="showStandingsSelector()">Standings</button>
+            </div>
+        </div>
+    </form>
+
+    {% if selected_tournament %}
+    <hr class="my-4">
+    
+    <div class="alert alert-info">
+        <strong>{{ selected_tournament.name }}</strong> | 
+        Total Rounds: {{ selected_tournament.rounds }} | 
+        Win: {{ selected_tournament.win_points }}pts | 
+        Draw: {{ selected_tournament.draw_points }}pts | 
+        Loss: {{ selected_tournament.loss_points }}pts
+    </div>
+
+    <!-- Display all rounds -->
+    {% for round in rounds_data %}
+    <div class="card round-card">
+        <div class="card-header round-header">
+            <h4 class="mb-0">Round {{ round.round_number }}</h4>
+        </div>
+        <div class="card-body">
+            
+            {% if round.bye_player and round.bye_players|length > 0 %}
+            <div class="alert bye-alert">
+                <strong>🏆 Bye Player:</strong> 
+                {% for bye_name in round.bye_players %}
+                    {{ bye_name }}{% if not loop.last %}, {% endif %}
+                {% endfor %}
+                (awarded {{ selected_tournament.win_points }} point{% if selected_tournament.win_points != 1 %}s{% endif %} each)
+            </div>
+            {% endif %}
+
+            <form method="POST">
+                <input type="hidden" name="tournament_id" value="{{ selected_tournament.id }}">
+                <input type="hidden" name="round_number" value="{{ round.round_number }}">
+                <input type="hidden" name="action" value="save_results">
+
+                <table class="table table-striped table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th style="width: 35%;">White Player</th>
+                            <th style="width: 35%;">Black Player</th>
+                            <th style="width: 30%;">Result</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for match in round.pairings %}
+                        <tr class="match-row">
+                            <td>{{ match.white_name }}</td>
+                            <td>{{ match.black_name }}</td>
+                            <td>
+                                {% set result_key = match.white_id|string + '-' + match.black_id|string %}
+                                {% if round.results.get(result_key) %}
+                                    <span class="badge bg-success fs-6">
+                                        {% if round.results[result_key] == 'white' %}
+                                            ✓ White Won
+                                        {% elif round.results[result_key] == 'black' %}
+                                            ✓ Black Won
+                                        {% elif round.results[result_key] == 'draw' %}
+                                            ⚖ Draw
+                                        {% elif round.results[result_key] == 'bye_white' %}
+                                            ✓ Bye (White)
+                                        {% elif round.results[result_key] =='bye_black' %}
+                                            ✓ Bye (Black)
+                                        {% endif %}
+                                    </span>
+                                {% else %}
+                                    <div class="btn-group" role="group">
+                                        <input type="radio" class="btn-check" name="winner_{{ match.white_id }}-{{ match.black_id }}"
+                                                value="bye_white" id="byew{{ match.white_id }}--{{ match.black_id }}">
+                                        <label class = "btn btn-outline-warning btn-sm" for="byew{{ match.white_id }}--{{ match.black_id }}">Bye (White)</label>
+                            
+                                        <input type="radio" class="btn-check" name="winner_{{ match.white_id }}-{{ match.black_id }}" 
+                                               value="white" id="w{{ match.white_id }}-{{ match.black_id }}" required>
+                                        <label class="btn btn-outline-success btn-sm" for="w{{ match.white_id }}-{{ match.black_id }}">White</label>
+                                        
+                                        <input type="radio" class="btn-check" name="winner_{{ match.white_id }}-{{ match.black_id }}" 
+                                               value="draw" id="d{{ match.white_id }}-{{ match.black_id }}">
+                                        <label class="btn btn-outline-secondary btn-sm" for="d{{ match.white_id }}-{{ match.black_id }}">Draw</label>
+                                        
+                                        <input type="radio" class="btn-check" name="winner_{{ match.white_id }}-{{ match.black_id }}" 
+                                               value="black" id="b{{ match.white_id }}-{{ match.black_id }}">
+                                        <label class="btn btn-outline-danger btn-sm" for="b{{ match.white_id }}-{{ match.black_id }}">Black</label>
+
+                                        <input type="radio" class="btn-check" name="winner_{{ match.white_id }}-{{ match.black_id }}" 
+                                                value="bye_black" id="byeb{{ match.white_id }}-{{ match.black_id }}">
+                                        <label class="btn btn-outline-warning btn-sm" for="byeb{{ match.white_id }}-{{ match.black_id }}">Bye (Black)</label>
+                                    </div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+                {% set result_key_check = round.pairings[0].white_id|string + '-' + round.pairings[0].black_id|string if round.pairings else '' %}
+                {% if round.pairings and not round.results.get(result_key_check) %}
+                <button type="submit" class="btn btn-success">
+                    Save Round {{ round.round_number }} Results
+                </button>
+                {% endif %}
+            </form>
+
+        </div>
+    </div>
+    {% endfor %}
+
+    <!-- Generate Next Round Button -->
+    {% if rounds_data|length < selected_tournament.rounds %}
+    <div class="text-center mt-4">
+        <form method="POST">
+            <input type="hidden" name="tournament_id" value="{{ selected_tournament.id }}">
+            <input type="hidden" name="action" value="generate_next_round">
+            <button type="submit" class="btn btn-generate btn-lg">
+                Generate Round {{ rounds_data|length + 1 }}
+            </button>
+        </form>
+    </div>
+    {% elif rounds_data|length == selected_tournament.rounds %}
+    <div class="alert alert-success text-center mt-4">
+        <h4>🏁 Tournament Complete!</h4>
+        <p>All {{ selected_tournament.rounds }} rounds have been played.</p>
+    </div>
+    {% endif %}
+
+    {% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+
+function showStandingsSelector() {
+    // Hide the rounds form/content
+    const mainContent = document.querySelector('.container > form');
+    if (mainContent) {
+        mainContent.style.display = 'none';
+    }
+    
+    fetch("/api/tournaments")
+    .then(response => response.json())
+    .then(data => {
+        let box = document.getElementById("tournamentListBox");
+        if (!data.tournaments || data.tournaments.length === 0) {
+            box.innerHTML = `<div class="alert alert-warning mt-4">No tournaments available.</div>`;
+            return;
+        }
+
+        let html = `<div class="card mt-4 p-3" style="background: white;">
+            <h4 class="mb-3" style="color: #667eea;">Select Tournament for Standings</h4>
+            <div class="list-group">`;
+
+        data.tournaments.forEach(t => {
+            html += `<button class="list-group-item list-group-item-action mb-2" 
+                     onclick="loadStandings('${t.name}')" style="cursor: pointer;">
+                     ${t.name} (${t.rounds} rounds, ${t.players} players)
+                     </button>`;
+        });
+
+        html += `</div>
+            <button class="btn btn-secondary mt-3" onclick="hideStandings()">← Back to Rounds</button>
+        </div>`;
+        box.innerHTML = html;
+    });
+}
+
+function loadStandings(tname) {
+    fetch(`/api/tournament/${encodeURIComponent(tname)}/standings`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+
+        let box = document.getElementById("tournamentListBox");
+        let html = `
+        <div class="card mt-4 p-3" style="background: white;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4 style="color: #667eea;">${data.tournament} - Standings</h4>
+                <span class="badge bg-info fs-6">Round ${data.current_round} of ${data.total_rounds}</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                        <tr>
+                            <th>#</th>
+                            <th>Name</th>
+                            <th>ELO</th>
+                            <th>Score</th>
+                            <th>Buchholz</th>
+                            <th>Buch Cut-1</th>
+                            <th>Games</th>
+                            <th>W/B</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+        data.standings.forEach(player => {
+            html += `
+                <tr>
+                    <td><strong>${player.rank}</strong></td>
+                    <td>${player.name}</td>
+                    <td>${player.elo}</td>
+                    <td><strong style="color: #667eea;">${player.score}</strong></td>
+                    <td>${player.buchholz.toFixed(1)}</td>
+                    <td>${player.buchholz_cut1.toFixed(1)}</td>
+                    <td>${player.games_played}</td>
+                    <td>${player.white_count}/${player.black_count}</td>
+                </tr>`;
+        });
+
+        html += `</tbody></table></div>
+            <button class="btn btn-secondary mt-2" onclick="showStandingsSelector()">← Back to Tournament List</button>
+        </div>`;
+        
+        box.innerHTML = html;
+    })
+    .catch(err => {
+        console.error("Error loading standings:", err);
+        alert("Failed to load standings");
+    });
+}
+
+function hideStandings() {
+    // Show the rounds form again
+    const mainContent = document.querySelector('.container > form');
+    if (mainContent) {
+        mainContent.style.display = 'block';
+    }
+    
+    // Clear standings box
+    document.getElementById("tournamentListBox").innerHTML = '';
+}
+</script>
+</body>
+</html>
